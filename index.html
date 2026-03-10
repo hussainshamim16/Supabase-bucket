@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>signup</title>
+    <link href="./css/bootstrap.css" rel="stylesheet">
+</head>
+
+<body>
+    <h1 class="text-center">filese</h1>
+
+    <!-- Ye form hai jahan se naya file (image) upload karenge -->
+    <form action="javaScript:void(0)" onsubmit="uploadfile()">
+        <input type="file" id="userfile"> <br> <br>
+        <button type="submit">add file</button>
+    </form> <br> <br>
+
+    <!-- Yahan uploaded image dikhai degi (preview) -->
+    <img src="" alt="render" id="profileimage" width="300px" height="300px">
+
+    <!-- Yahan sab uploaded images ki list dikhegi -->
+    <div id="imageContainer"></div>
+
+    <br> <br>
+
+    <h1>updated image select</h1>
+    <!-- Ye form hai jahan se purani image ko replace/update karenge -->
+    <form action="javaScript:void(0)" onsubmit="update()">
+        <input type="file" id="updatedImage"> <br> <br>
+        <!-- <button type="submit">add file</button> -->
+    </form>
+
+
+    <script src="./scripts/bootstrap.js"></script>
+    <script type="module">
+
+        // Supabase se connect kar rahe hain (online storage ke liye)
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+        
+        // Supabase ka URL aur public anon key
+        const supabase = createClient(
+            'https://cwzasowplsaqaqzuecqv.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN3emFzb3dwbHNhcWFxenVlY3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4Njc4NTksImV4cCI6MjA4ODQ0Mzg1OX0.mcC3k-gq1hX0bti6bXY9CWDhr2BJ0XvLKR2WZ3XVABo'
+        )
+
+        // 'hello' naam ka bucket select kar liya (ye folder jaisa hota hai storage mein)
+        const avatars = supabase.storage.from('hello')
+
+
+        // ------------------ NAYA FILE UPLOAD KARNE KA FUNCTION ------------------
+        async function uploadfile() {
+            // file input se file uthao
+            let img = document.getElementById("userfile")
+            let file = img.files[0]
+
+            // unique naam banaya taake purani file overwrite na ho
+            let filepath = String(Date.now())
+
+            // agar user ne koi file select nahi ki to ruk jao
+            if (!file) {
+                alert("please select file")
+                return
+            }
+
+            // Supabase storage mein file upload kar rahe hain
+            const { data, error } = await supabase.storage
+                .from('hello')
+                .upload(filepath, file)
+
+            if (error) {
+                console.log(error)
+                alert("error message")
+                return
+            }
+
+            console.log("all data", data)
+
+            // upload hone ke baad image ko screen pe dikhao
+            getimage(filepath)
+        }
+
+
+        // ------------------ PUBLIC URL NIKAL KE IMAGE DIKHAANE KA FUNCTION ------------------
+        async function getimage(params) {
+            // file ka public URL nikaal rahe hain
+            const { data, error } = await supabase
+                .storage
+                .from('hello')
+                .getPublicUrl(params)
+
+            if (error) {
+                console.log(error)
+                alert("error message")
+                return
+            }
+
+            // image ka src set kar diya taake dikhe
+            document.getElementById("profileimage").src = data.publicUrl
+        }
+
+
+        // in functions ko window pe daal diya taake button onclick se call ho sakein
+        window.getimage = getimage
+        window.uploadfile = uploadfile
+
+
+        // ------------------ SAARI IMAGES LOAD KAR KE DIKHAANE KA FUNCTION ------------------
+        async function loadImages() {
+            // bucket se 100 files tak ki list le rahe hain
+            const { data, error } = await supabase.storage
+                .from("hello")
+                .list("", { limit: 100 });
+
+            if (error) {
+                console.log("Error loading images:", error.message);
+                return;
+            }
+
+            const container = document.getElementById("imageContainer");
+            container.innerHTML = ""; // pehle wala content hatao
+
+            // har file ke liye card bana rahe hain
+            data.forEach(file => {
+                const { data: publicUrl } = supabase.storage
+                    .from("hello")
+                    .getPublicUrl(file.name);
+
+                // har image ke saath delete, rename, update button bhi daal rahe
+                container.innerHTML += `
+      <div class="image-card">
+        <img src="${publicUrl.publicUrl}?v=${Date.now()}" width="150" />
+        <p>${file.name}</p>
+        <button onclick="deleteImage('${file.name}')">Delete</button>
+        <button onclick="renameImage('${file.name}')">rename</button>
+        <button onclick="update('${file.name}')">update</button>
+      </div>
+    `;
+            });
+        }
+
+        // page load hote hi saari images dikha do
+        loadImages();
+
+
+        // ------------------ IMAGE DELETE KARNE KA FUNCTION ------------------
+        //yhan file name ka peramitor opper button sey aa rha hey 
+        async function deleteImage(fileName) {
+            const { error } = await supabase.storage
+                .from("hello")
+                // idhar array breckit es liye hey key ye method aike saath bohot sari filese bhi delete karta hey 
+                .remove([fileName]);
+
+            if (error) {
+                alert("Delete error: " + error.message);
+            } else {
+                alert("Deleted successfully");
+                loadImages(); // delete hone ke baad list refresh karo
+            }
+        }
+        window.deleteImage = deleteImage
+
+
+        // ------------------ IMAGE KA NAAM BADALNE (RENAME) KA FUNCTION ------------------
+        async function renameImage(oldName) {
+            // user se naya naam poochte hain
+            let newname = prompt("enter your new file name")
+
+            console.log("oldName ", oldName)
+            console.log("newname ", newname)
+
+            // pehle copy banao naye naam se
+            let { error } = await supabase.storage
+                .from("hello")
+                .copy(oldName, newname)
+
+            if (error) {
+                console.log("error ", error)
+                alert("Rename failed: " + error.message)
+                return
+            }
+
+            // purana file delete kar do
+            await supabase.storage
+                .from("hello")
+                .remove([oldName])
+
+            // list refresh kar do
+            loadImages()
+        }
+        window.renameImage = renameImage
+
+
+        // ------------------ PURANI IMAGE KO REPLACE/UPDATE KARNE KA FUNCTION ------------------
+        async function update(filename) {
+            // naya file input se uthao jo last mey form banaya tha tum ney html mey 
+            let newImage = document.getElementById("updatedImage")
+            let file = newImage.files[0]
+
+            if (!file) {
+                alert("enter file")
+                return
+            }
+
+            // Supabase ke update function se purani file ko replace kar dete hain
+            let { error } = await supabase.storage
+                .from("hello")
+                .update(filename, file, {
+                    upsert: true   // agar file nahi mili to naya file bana dena, aur agar mil gayi to usko replace/update kar dena oskey file path sey
+                })
+
+            if (error) {
+                alert("error aya hey: " + error.message)
+                return
+            }
+
+            alert("document update successfully")
+            loadImages() // list refresh karo
+        }
+
+        window.update = update
+
+    </script>
+</body>
+</html>
